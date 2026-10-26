@@ -1,0 +1,4 @@
+# Independent interoperability checks (tools/verify_external.py).
+# These are test-only; Scour itself has no Python or third-party runtime deps.
+pikepdf==10.17.0
+pypdf==6.21.2

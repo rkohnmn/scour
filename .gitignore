@@ -1,0 +1,27 @@
+# CMake build trees (generated; reconfigure rather than commit)
+build/
+build-*/
+cmake-build-*/
+
+# Local environment and packaging output
+.env
+.env.*
+.venv/
+venv/
+dist/
+__pycache__/
+*.pyc
+*.scour-tmp
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Build artefacts we never want in a redaction tool's repo
+*.o
+*.a
+*.so
+*.dylib
+*.exe

@@ -1,0 +1,139 @@
+.TH SCOUR 1 "October 2026" "scour 1.0.0" "User Commands"
+.SH NAME
+scour \- inspect, redact and verify PDF documents offline
+.SH SYNOPSIS
+.B scour
+.I command
+.RI [ file ]
+.RI [ options ]
+.SH DESCRIPTION
+.B scour
+reads a PDF without trusting a viewer, reports what the file still contains
+beyond what the page shows, removes selected text and hidden data, and verifies
+its own output. It has no network code, no telemetry and no runtime
+dependencies.
+.PP
+A scrub is a full rewrite: text is removed from the content streams and the
+document is serialized from its reachable object graph with a fresh
+cross-reference table. Earlier revisions, orphaned objects and stale metadata
+are not written.
+.SH COMMANDS
+.TP
+.B inspect \fIfile\fR
+Report metadata, hidden text, annotations, embedded files, actions, structure,
+PII and integrity. Options:
+.BR \-\-json ,
+.BR \-\-no\-pii ,
+.BR \-\-fail\-on " " N .
+.TP
+.B scrub \fIfile\fR \-o \fIout\fR
+Remove targets and sanitize the file. Options:
+.BR \-\-term " " TEXT ,
+.BR \-\-pii ,
+.BR \-\-pages " " LIST ,
+.BR \-\-rect " " PAGE:X0,Y0,X1,Y1 ,
+.BR \-\-no\-boxes ,
+.BR \-\-keep\-metadata ,
+.BR \-\-keep\-annotations ,
+.BR \-\-keep\-attachments ,
+.BR \-\-keep\-scripts ,
+.BR \-\-no\-redact ,
+.BR \-\-in\-place ,
+.BR \-\-compress .
+.TP
+.B verify \fIfile\fR
+Re-extract the document and report whether a target survives. Options:
+.BR \-\-term " " TEXT ,
+.BR \-\-pii ,
+.BR \-\-pages " " LIST ,
+.BR \-\-json .
+.TP
+.B tui \fIfile\fR
+Interactive dashboard. Options:
+.BR \-\-theme " " midnight|paper ,
+.BR \-\-dump " " WIDTHxHEIGHT ,
+.BR \-\-ansi ,
+.BR \-\-keys " " STR .
+.TP
+.B text \fIfile\fR
+Print the extracted text layer. Option:
+.BR \-\-page " " N .
+.TP
+.B split \fIfile\fR
+Write a page subset with
+.B \-\-pages
+or one file per page with
+.BR \-\-each .
+.TP
+.B merge \-o \fIout\fR \fIa.pdf b.pdf\fR ...
+Concatenate documents. Annotations and links are remapped.
+.TP
+.B rotate \fIfile\fR \-\-by \fIDEGREES\fR
+Add a rotation to pages. Option:
+.BR \-\-pages .
+.SH OPTIONS
+.TP
+.B \-p, \-\-password \fIPASSWORD\fR
+Open an encrypted PDF. Without a usable password the command exits 3.
+.TP
+.B \-o, \-\-output \fIPATH\fR
+Output file or directory.
+.TP
+.B \-\-help, \-h
+Print help for the command.
+.TP
+.B \-\-version
+Print the version.
+.TP
+.B \-\-no\-color
+Disable ANSI color. The
+.B NO_COLOR
+environment variable has the same effect.
+.SH PAGE LISTS
+Pages are 1-based. A list may contain numbers and ranges separated by commas:
+.BR 1 ,
+.BR 1-3 ,
+.BR 7,9-11 ,
+.BR 5- ,
+.BR \-3 .
+Values are clamped to the document and de-duplicated.
+.SH EXIT STATUS
+.TP
+.B 0
+Success; nothing remained to report.
+.TP
+.B 1
+Findings remain: the risk is at or above the threshold, or a target survived
+scrub/verify.
+.TP
+.B 2
+Usage error.
+.TP
+.B 3
+The input could not be opened, decrypted or parsed.
+.TP
+.B 4
+The output could not be written or a writer/verification failure occurred.
+.SH EXAMPLES
+.nf
+scour inspect brief.pdf
+scour inspect brief.pdf --json --fail-on 10
+scour scrub brief.pdf -o brief.safe.pdf --pii --term "Project Bluebird"
+scour verify brief.safe.pdf --pii --term "Project Bluebird"
+scour tui brief.pdf
+scour text brief.pdf --page 2
+scour split report.pdf --pages 1-3 -o intro.pdf
+scour merge -o combined.pdf a.pdf b.pdf
+scour rotate scan.pdf --by 90 -o upright.pdf
+.fi
+.SH LIMITATIONS
+Text inside images is not OCR'd. Optional content layers are not modeled as
+hidden. Rewriting invalidates signatures. Verification proves that the
+requested targets are absent from the extracted text layer; it does not prove
+that no pixel contains them, and it is not a compliance certification.
+.SH SEE ALSO
+Documentation in
+.I docs/
+and the project README.
+.SH AUTHOR
+The Scour Authors. MIT licensed.
