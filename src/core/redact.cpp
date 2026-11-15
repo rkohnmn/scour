@@ -135,12 +135,20 @@ RedactionReport verify_document(Document& document, const RedactionTargets& targ
     RedactionReport report;
     const std::vector<std::uint32_t> pages = collect_page_numbers(document, diagnostics);
     report.pages_scanned = static_cast<int>(pages.size());
+    // An empty document cannot establish that any requested target is absent.
+    bool trustworthy = !pages.empty();
     for (std::size_t i = 0; i < pages.size(); ++i) {
         const PageAnalysis analysis = analyze_page(document, pages[i], static_cast<int>(i), TextOptions{},
                                                    diagnostics);
         if (!analysis.reliable) {
+            trustworthy = false;
             report.warnings.push_back("page " + std::to_string(i + 1) +
                                       " has a font encoding that cannot be verified");
+        }
+        if (analysis.has_images && !analysis.has_text) {
+            trustworthy = false;
+            report.warnings.push_back("page " + std::to_string(i + 1) +
+                                      " is image-only; text inside images cannot be verified");
         }
         for (const PatternMatch& match : matches_for(analysis.text, targets)) {
             RedactionFinding finding;
@@ -154,8 +162,35 @@ RedactionReport verify_document(Document& document, const RedactionTargets& targ
             }
             report.remaining.push_back(std::move(finding));
         }
+        // Area redactions have no literal/PII search term. Prove that no
+        // non-whitespace glyph survives inside each requested rectangle.
+        // Checking only matches_for() would always pass an area-only request.
+        if (const auto areas = targets.rects.find(static_cast<int>(i) + 1);
+            areas != targets.rects.end()) {
+            if (analysis.has_images) {
+                trustworthy = false;
+                report.warnings.push_back("page " + std::to_string(i + 1) +
+                                          " contains images; rectangle pixel content cannot be verified");
+            }
+            for (const Rect& rect : areas->second) {
+                bool found = false;
+                for (const TextRun& run : analysis.runs) {
+                    for (const Glyph& glyph : run.glyphs) {
+                        // A successful scrub replaces the glyph with space
+                        // glyphs to preserve layout, so spaces are not leaks.
+                        if (glyph.utf8.find_first_not_of(" \t\r\n") == std::string::npos ||
+                            !glyph.box.intersects(rect)) continue;
+                        report.remaining.push_back(RedactionFinding{
+                            static_cast<int>(i) + 1, "area", glyph.utf8, glyph.box});
+                        found = true;
+                        break;
+                    }
+                    if (found) break;
+                }
+            }
+        }
     }
-    report.verified = report.remaining.empty();
+    report.verified = trustworthy && report.remaining.empty();
     return report;
 }
 
@@ -357,7 +392,7 @@ RedactionReport redact_document(Document& document, const RedactionTargets& targ
     // Verification is not optional: re-extract and look again.
     const RedactionReport verification = verify_document(document, targets, diagnostics);
     report.remaining = verification.remaining;
-    report.verified = verification.remaining.empty();
+    report.verified = verification.verified;
     for (const std::string& warning : verification.warnings) report.warnings.push_back(warning);
     return report;
 }

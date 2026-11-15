@@ -154,6 +154,51 @@ SCOUR_TEST(redact, verification_reports_leftovers_from_untouchable_text) {
     CHECK_EQ(report.remaining[0].page, 3);
 }
 
+SCOUR_TEST(redact, unreadable_font_does_not_pass_verification) {
+    Document document = load(scour_test::make_minimal_pdf("Secret data"));
+    Object* font = document.mutable_object(5);
+    CHECK(font != nullptr);
+    if (font == nullptr) return;
+    // CID/Type0 without a ToUnicode map is known to be unreliable to decode.
+    font->set("Subtype", Object::name("Type0"));
+    Diagnostics diagnostics;
+    RedactionTargets targets;
+    targets.terms = {"Secret"};
+    const RedactionReport verification = verify_document(document, targets, diagnostics);
+    CHECK(not verification.verified);
+    CHECK(not verification.clean());
+    CHECK(not verification.warnings.empty());
+    CHECK(verification.remaining.empty());
+}
+
+SCOUR_TEST(redact, image_only_pdf_is_not_verified_as_text_clean) {
+    Document document = load(scour_test::make_scanned_fixture());
+    Diagnostics diagnostics;
+    RedactionTargets targets;
+    targets.terms = {"Secret"};
+    const RedactionReport verification = verify_document(document, targets, diagnostics);
+    CHECK(not verification.verified);
+    CHECK(not verification.clean());
+    CHECK(not verification.warnings.empty());
+}
+
+SCOUR_TEST(redact, area_only_verification_detects_uncleared_text) {
+    Document document = load(scour_test::make_minimal_pdf("Secret line stays visible."));
+    Diagnostics diagnostics;
+    RedactionTargets targets;
+    targets.rects[1] = {Rect{60.0, 700.0, 560.0, 740.0}};
+    const RedactionReport before = verify_document(document, targets, diagnostics);
+    CHECK(not before.clean());
+    CHECK(not before.remaining.empty());
+    CHECK_EQ(before.remaining[0].kind, std::string("area"));
+    const RedactionReport redacted = redact_document(document, targets, diagnostics);
+    CHECK(redacted.clean());
+    CHECK_GT(redacted.glyphs_removed, 0);
+    const RedactionReport after = verify_document(document, targets, diagnostics);
+    CHECK(after.clean());
+    CHECK(after.remaining.empty());
+}
+
 SCOUR_TEST(redact, finds_nothing_when_no_targets_given) {
     Document document = load(scour_test::make_fixture({}));
     Diagnostics diagnostics;

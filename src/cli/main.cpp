@@ -507,6 +507,25 @@ int command_scrub(const std::vector<std::string>& args) {
     write_options.compress_streams = options.has("compress");
     write_options.deterministic_id = true;
     const WriteResult written = write_document(document, write_options, diagnostics);
+    const bool has_targets = !scrub_options.targets.terms.empty() || scrub_options.targets.pii ||
+                             !scrub_options.targets.rects.empty();
+    // An in-place scrub must never overwrite the source with an output we
+    // already know cannot be verified. Validate the candidate in memory first.
+    if (options.has("in-place") && scrub_options.redact && has_targets) {
+        Diagnostics staged_diagnostics;
+        Document staged = Document::load(written.bytes, LoadOptions{}, staged_diagnostics);
+        const RedactionReport preflight =
+            verify_document(staged, scrub_options.targets, staged_diagnostics);
+        if (!preflight.clean()) {
+            std::cerr << "refusing --in-place: replacement could not be verified; "
+                         "the original file was not changed
+";
+            for (const std::string& warning : preflight.warnings)
+                std::cerr << "  warning  " << warning << "
+";
+            return kExitFindings;
+        }
+    }
     write_file_atomic(output, written.bytes);
 
     // Prove the result: reopen the file we just wrote and look again.
@@ -515,8 +534,6 @@ int command_scrub(const std::vector<std::string>& args) {
     RedactionReport verification;
     verification.verified = true;
     verification.pages_scanned = pages;
-    const bool has_targets = !scrub_options.targets.terms.empty() || scrub_options.targets.pii ||
-                             !scrub_options.targets.rects.empty();
     if (scrub_options.redact && has_targets) {
         verification = verify_document(reopened, scrub_options.targets, verify_diagnostics);
     }
@@ -547,6 +564,10 @@ int command_scrub(const std::vector<std::string>& args) {
         if (verification.remaining.empty() && verification.verified) {
             out << "\n  " << green("verified") << "     re-opened the output; the targets are gone from "
                 << "the text layer\n";
+        } else if (verification.remaining.empty()) {
+            clean = false;
+            out << "\n  " << red("not verified")
+                << "  text extraction was incomplete; review the warnings before sharing\n";
         } else {
             clean = false;
             out << "\n  " << red("not clean") << "    " << verification.remaining.size()
@@ -600,6 +621,11 @@ int command_verify(const std::vector<std::string>& args) {
             out << "{\"page\": " << report.remaining[i].page << ", \"kind\": "
                 << json_quote(report.remaining[i].kind) << ", \"text\": "
                 << json_quote(report.remaining[i].text) << "}";
+        }
+        out << "], \"warnings\": [";
+        for (std::size_t i = 0; i < report.warnings.size(); ++i) {
+            if (i != 0) out << ", ";
+            out << json_quote(report.warnings[i]);
         }
         out << "]}\n";
         std::cout << out.str();
