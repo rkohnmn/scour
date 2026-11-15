@@ -118,6 +118,25 @@ expect_status 1 "verify catches painted-over text" "$WORK/verify-hidden.txt" \
     "$SCOUR" verify "$WORK/contract-leak.pdf" --term "PROJECT BLUEBIRD"
 contains "$WORK/verify-hidden.txt" "NOT CLEAN" "verify catches leaks"
 
+# A scanned page cannot be certified by text extraction without OCR.
+expect_status 1 "verify scanned page fails closed" "$WORK/verify-scan.txt" \
+    "$SCOUR" verify "$WORK/scanned-report.pdf" --term "Secret"
+contains "$WORK/verify-scan.txt" "NOT CLEAN" "scan verification status"
+contains "$WORK/verify-scan.txt" "image-only" "scan warning"
+expect_status 1 "verify scanned page JSON fails closed" "$WORK/verify-scan.json" \
+    "$SCOUR" verify "$WORK/scanned-report.pdf" --term "Secret" --json
+contains "$WORK/verify-scan.json" '"verified": false' "scan JSON status"
+contains "$WORK/verify-scan.json" '"warnings"' "scan JSON warnings"
+
+# An unverified in-place scrub must leave the original bytes unchanged.
+cp "$WORK/scanned-report.pdf" "$WORK/scan-inplace.pdf"
+expect_status 1 "in-place rejects unverifiable scan" "$WORK/scan-inplace.txt"     "$SCOUR" scrub "$WORK/scan-inplace.pdf" --in-place --term "Secret"
+contains "$WORK/scan-inplace.txt" "original file was not changed" "in-place preservation"
+if ! cmp -s "$WORK/scan-inplace.pdf" "$WORK/scanned-report.pdf"; then
+    echo "FAIL: failed in-place verification modified the original PDF" >&2
+    failures=$((failures + 1))
+fi
+
 # ---------------------------------------------------------------------------
 # page operations
 # ---------------------------------------------------------------------------
