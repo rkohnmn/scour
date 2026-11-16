@@ -518,11 +518,9 @@ int command_scrub(const std::vector<std::string>& args) {
             verify_document(staged, scrub_options.targets, staged_diagnostics);
         if (!preflight.clean()) {
             std::cerr << "refusing --in-place: replacement could not be verified; "
-                         "the original file was not changed
-";
+                         "the original file was not changed\n";
             for (const std::string& warning : preflight.warnings)
-                std::cerr << "  warning  " << warning << "
-";
+                std::cerr << "  warning  " << warning << "\n";
             return kExitFindings;
         }
     }
